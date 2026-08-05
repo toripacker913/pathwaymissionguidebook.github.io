@@ -29,11 +29,34 @@
     overflow: auto;
     padding: 10px;
   }
+  #page-container {
+    position: relative;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    line-height: 0;
+  }
   canvas {
     background: white;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    display: block;
     max-width: 100%;
     height: auto;
+  }
+  /* Link annotation layer, overlaid exactly on top of the canvas */
+  #link-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+  #link-layer a {
+    position: absolute;
+    display: block;
+    background: rgba(0, 100, 255, 0.0);
+    cursor: pointer;
+  }
+  #link-layer a:hover {
+    background: rgba(0, 100, 255, 0.15);
+    outline: 1px solid rgba(0, 100, 255, 0.4);
   }
   #controls {
     display: flex;
@@ -76,7 +99,10 @@
 
 <div id="viewer">
   <div id="canvas-wrap">
-    <canvas id="pdf-canvas"></canvas>
+    <div id="page-container">
+      <canvas id="pdf-canvas"></canvas>
+      <div id="link-layer"></div>
+    </div>
     <div id="loading" style="display:none;">Loading PDF…</div>
   </div>
   <div id="controls">
@@ -101,10 +127,67 @@
   let pageNumPending = null;
   const canvas = document.getElementById("pdf-canvas");
   const ctx = canvas.getContext("2d");
+  const linkLayer = document.getElementById("link-layer");
   const pageInfo = document.getElementById("page-info");
   const prevBtn = document.getElementById("prev");
   const nextBtn = document.getElementById("next");
   const loading = document.getElementById("loading");
+
+  function clearLinkLayer() {
+    linkLayer.innerHTML = "";
+  }
+
+  function renderLinks(page, viewport) {
+    clearLinkLayer();
+    page.getAnnotations().then(function (annotations) {
+      annotations.forEach(function (ann) {
+        if (ann.subtype !== "Link") return;
+
+        const rect = pdfjsLib.Util.normalizeRect(
+          viewport.convertToViewportRectangle(ann.rect)
+        );
+        const left = Math.min(rect[0], rect[2]);
+        const top = Math.min(rect[1], rect[3]);
+        const width = Math.abs(rect[2] - rect[0]);
+        const height = Math.abs(rect[3] - rect[1]);
+
+        const a = document.createElement("a");
+        a.style.left = left + "px";
+        a.style.top = top + "px";
+        a.style.width = width + "px";
+        a.style.height = height + "px";
+        a.title = ann.url || "";
+
+        if (ann.url) {
+          a.href = ann.url;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+        } else if (ann.dest) {
+          a.href = "#";
+          a.addEventListener("click", function (e) {
+            e.preventDefault();
+            if (typeof ann.dest === "string") {
+              pdfDoc.getDestination(ann.dest).then(function (destArray) {
+                if (destArray) {
+                  pdfDoc.getPageIndex(destArray[0]).then(function (idx) {
+                    pageNum = idx + 1;
+                    queueRenderPage(pageNum);
+                  });
+                }
+              });
+            } else {
+              pdfDoc.getPageIndex(ann.dest[0]).then(function (idx) {
+                pageNum = idx + 1;
+                queueRenderPage(pageNum);
+              });
+            }
+          });
+        }
+
+        linkLayer.appendChild(a);
+      });
+    });
+  }
 
   function renderPage(num) {
     pageRendering = true;
@@ -116,6 +199,8 @@
 
       canvas.height = viewport.height;
       canvas.width = viewport.width;
+      linkLayer.style.width = viewport.width + "px";
+      linkLayer.style.height = viewport.height + "px";
 
       const renderContext = {
         canvasContext: ctx,
@@ -124,6 +209,7 @@
       const renderTask = page.render(renderContext);
       renderTask.promise.then(function () {
         pageRendering = false;
+        renderLinks(page, viewport);
         if (pageNumPending !== null) {
           renderPage(pageNumPending);
           pageNumPending = null;
@@ -159,7 +245,6 @@
   prevBtn.addEventListener("click", onPrevPage);
   nextBtn.addEventListener("click", onNextPage);
 
-  // Keyboard navigation
   document.addEventListener("keydown", function (e) {
     if (e.key === "ArrowLeft") onPrevPage();
     if (e.key === "ArrowRight") onNextPage();

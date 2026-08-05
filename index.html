@@ -89,7 +89,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
   // ---- CONFIG: change this to your PDF's filename in the repo ----
-  const PDF_URL = "missionaryguidebookl.pdf";
+  const PDF_URL = "Missionary Guidebook L.pdf";
   // ------------------------------------------------------------------
 
   pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -167,7 +167,7 @@
 
   loading.style.display = "block";
   pdfjsLib
-    .getDocument(PDF_URL)
+    .getDocument(encodeURI(PDF_URL))
     .promise.then(function (doc) {
       pdfDoc = doc;
       loading.style.display = "none";
